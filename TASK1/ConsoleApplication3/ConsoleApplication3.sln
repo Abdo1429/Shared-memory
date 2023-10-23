@@ -1,31 +1,53 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.7.34024.191
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ConsoleApplication3", "ConsoleApplication3\ConsoleApplication3.vcxproj", "{69489375-B892-4E54-B08D-258A1ADCBF04}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|x64 = Debug|x64
-		Debug|x86 = Debug|x86
-		Release|x64 = Release|x64
-		Release|x86 = Release|x86
-	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Debug|x64.ActiveCfg = Debug|x64
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Debug|x64.Build.0 = Debug|x64
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Debug|x86.ActiveCfg = Debug|Win32
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Debug|x86.Build.0 = Debug|Win32
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Release|x64.ActiveCfg = Release|x64
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Release|x64.Build.0 = Release|x64
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Release|x86.ActiveCfg = Release|Win32
-		{69489375-B892-4E54-B08D-258A1ADCBF04}.Release|x86.Build.0 = Release|Win32
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {E7E039B3-4A7C-46B4-A253-ED0884AE4096}
-	EndGlobalSection
-EndGlobal
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+
+int c = 10;
+int d = 100;
+std::mutex mtx; // Mutex to protect shared data
+std::condition_variable cv_update, cv_read; // Condition variables
+
+int readCount = 0; // Number of processes that have read the current values
+int printCount = 0; // Number of times values have been printed to the console
+
+void updateFunction(int i) {
+    std::unique_lock<std::mutex> lock(mtx);
+    while (printCount < 15) {
+        // Wait until at least two processes have read the current values
+        cv_update.wait(lock, [] { return readCount >= 2; });
+        c = c + i;
+        d = d - i;
+        readCount = 0; // Reset read count
+        cv_read.notify_all(); // Notify reader processes
+    }
+}
+
+void readFunction(int i) {
+    std::unique_lock<std::mutex> lock(mtx);
+    while (printCount < 15) {
+        cv_read.wait(lock, [] { return readCount < 2; });
+        std::cout << "Process " << i << ": c=" << c << ", d=" << d << std::endl;
+        readCount++;
+        printCount++;
+        if (readCount >= 2) {
+            cv_update.notify_all(); // Notify update processes
+        }
+    }
+}
+
+int main() {
+    std::thread t1(updateFunction, 1);
+    std::thread t2(updateFunction, 2);
+    std::thread t3(readFunction, 3);
+    std::thread t4(readFunction, 4);
+    std::thread t5(readFunction, 5);
+
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
+
+    return 0;
+}
